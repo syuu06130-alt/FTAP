@@ -3,7 +3,6 @@
 ]]
 -- deobf code
 
-loadstring(game:HttpGet("https://raw.githubusercontent.com/EdgeIY/infiniteyield/master/source"))()
 local vu1 = game:GetService("ReplicatedStorage")
 game:GetService("HttpService")
 local vu2 = game:GetService("RunService")
