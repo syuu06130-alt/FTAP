@@ -1,20 +1,35 @@
 --[[
-    Syu_hub v8.3 | Added Phoenix Unique Features
+    Syu_hub v9.0 | Ultimate Blobman & Phoenix Features
     Target: Fling Things and People
-    Fixed Version: Improved safety, memory management, and UI
+    UI: Rayfield Interface Suite
+    Added: Poison/Radioactive/Fire/Noclip Grab, Kick Grab, Fire All, Anchor Grab, Auto Recover
 ]]
+
+local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
+
+local Window = Rayfield:CreateWindow({
+    Name = "Syu_hub | Ultimate v9.0",
+    LoadingTitle = "Syu_hub Loading...",
+    LoadingSubtitle = "by Gemini + Phoenix Features",
+    ConfigurationSaving = { Enabled = false },
+    KeySystem = false,
+})
 
 -- ■■■ Services ■■■
 local Players = game:GetService("Players")
 local Workspace = game:GetService("Workspace")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService = game:GetService("RunService")
 local Debris = game:GetService("Debris")
 local LocalPlayer = Players.LocalPlayer
-local TweenService = game:GetService("TweenService")
 
 -- ■■■ Variables ■■■
-local IsPoison = false
-local IsRadioactive = false
+local TargetPlayer = nil
+local IsLoopKicking = false
+local OriginalPosition = nil
+
+local IsPoisonGrab = false
+local IsRadioactiveGrab = false
 local IsFireGrab = false
 local IsNoclipGrab = false
 local IsKickGrab = false
@@ -22,332 +37,233 @@ local IsFireAll = false
 local IsAnchorGrab = false
 local IsAutoRecover = false
 
-local PoisonParts = {}
-local PaintParts = {}
 local GrabbedObjects = {}
 local Highlighted = {}
-local ActiveBodyParts = {}
 
--- ■■■ 初期化 ■■■
-local function InitializeParts()
-    PoisonParts = {}
-    PaintParts = {}
-    
-    local Map = Workspace:FindFirstChild("Map")
-    if Map then
-        for _, v in pairs(Map:GetDescendants()) do
-            if v.Name == "PoisonHurtPart" and v:IsA("BasePart") then
-                table.insert(PoisonParts, v)
-                v.Transparency = 1
-                v.CanCollide = false
-                v.Anchored = true
-                v.Position = Vector3.new(0, -200, 0)
-            elseif v.Name == "PaintPlayerPart" and v:IsA("BasePart") then
-                table.insert(PaintParts, v)
-                v.Transparency = 1
-                v.CanCollide = false
-                v.Anchored = true
-                v.Position = Vector3.new(0, -200, 0)
-            end
+-- ■■■ Poison / Paint Parts ■■■
+local PoisonParts = {}
+local PaintParts = {}
+
+task.spawn(function()
+    if Workspace:FindFirstChild("Map") then
+        for _, v in pairs(Workspace.Map:GetDescendants()) do
+            if v.Name == "PoisonHurtPart" and v:IsA("Part") then table.insert(PoisonParts, v) end
+            if v.Name == "PaintPlayerPart" and v:IsA("Part") then table.insert(PaintParts, v) end
         end
-    end
-end
-
--- ゲームロード時に初期化
-InitializeParts()
-Workspace.DescendantAdded:Connect(function(descendant)
-    if descendant.Name == "PoisonHurtPart" and descendant:IsA("BasePart") then
-        table.insert(PoisonParts, descendant)
-        descendant.Transparency = 1
-        descendant.CanCollide = false
-        descendant.Anchored = true
-        descendant.Position = Vector3.new(0, -200, 0)
-    elseif descendant.Name == "PaintPlayerPart" and descendant:IsA("BasePart") then
-        table.insert(PaintParts, descendant)
-        descendant.Transparency = 1
-        descendant.CanCollide = false
-        descendant.Anchored = true
-        descendant.Position = Vector3.new(0, -200, 0)
     end
 end)
 
 -- ■■■ Utility ■■■
-local function Notify(msg)
-    pcall(function()
-        game:GetService("StarterGui"):SetCore("SendNotification", {
-            Title = "Syu_hub v8.3",
-            Text = msg,
-            Duration = 3,
-            Icon = "rbxassetid://4483345998"
-        })
-    end)
+function SendNotif(title, content)
+    Rayfield:Notify({ Title = title, Content = content, Duration = 5, Image = 4483345998 })
 end
 
-local function GetGrabPart()
-    local GrabParts = Workspace:FindFirstChild("GrabParts")
-    if GrabParts then
-        return GrabParts:FindFirstChild("GrabPart")
+function GetPlayerNames()
+    local names = {}
+    for _, p in pairs(Players:GetPlayers()) do
+        if p ~= LocalPlayer then table.insert(names, p.Name) end
     end
-    return nil
+    return names
 end
 
-local function TriggerGrab(part)
-    if not part then return end
-    
-    for _, rem in pairs(ReplicatedStorage:GetDescendants()) do
-        if rem:IsA("RemoteEvent") and (string.find(rem.Name:lower(), "grab") or string.find(rem.Name:lower(), "interact")) then
-            pcall(function() 
-                rem:FireServer(part)
-            end)
+function FindBlobman()
+    local nearest, dist = nil, 500
+    for _, v in pairs(Workspace:GetDescendants()) do
+        if (v.Name == "Blobman" or v.Name == "Ragdoll") and v:IsA("Model") and v:FindFirstChild("HumanoidRootPart") then
+            if not Players:GetPlayerFromCharacter(v) then
+                local hrp = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+                if hrp then
+                    local d = (v.HumanoidRootPart.Position - hrp.Position).Magnitude
+                    if d < dist then dist = d nearest = v end
+                end
+            end
+        end
+    end
+    return nearest
+end
+
+function SpawnBlobman()
+    local args = { [1] = "Blobman" }
+    local spawned = false
+    for _, desc in pairs(ReplicatedStorage:GetDescendants()) do
+        if desc:IsA("RemoteEvent") and (string.find(desc.Name, "Spawn") or string.find(desc.Name, "Create") or string.find(desc.Name, "Toy")) then
+            pcall(function() desc:FireServer(unpack(args)) end)
+            spawned = true
+        end
+    end
+    if spawned then SendNotif("Spawn", "Blobman スポーン試行") end
+end
+
+function TriggerGrab(part)
+    for _, desc in pairs(ReplicatedStorage:GetDescendants()) do
+        if desc:IsA("RemoteEvent") and (string.find(desc.Name, "Grab") or string.find(desc.Name, "Interact")) then
+            pcall(function() desc:FireServer(part) end)
         end
     end
 end
 
-local function CreateFirePlayerPart()
-    -- 炎のパーツを作成する関数
-    local fire = Instance.new("Part")
-    fire.Name = "FirePlayerPart"
-    fire.Size = Vector3.new(5, 0.2, 5)
-    fire.Transparency = 1
-    fire.CanCollide = false
-    fire.Anchored = true
-    fire.Position = Vector3.new(0, -200, 0)
-    
-    local fireTouch = Instance.new("TouchTransmitter")
-    fireTouch.Parent = fire
-    
-    return fire
+-- ■■■ Blobman Kick Attack ■■■
+function BlobmanKick(targetName)
+    local target = Players:FindFirstChild(targetName)
+    if not target or not target.Character or not target.Character:FindFirstChild("HumanoidRootPart") then return end
+
+    local char = LocalPlayer.Character
+    if not char or not char:FindFirstChild("HumanoidRootPart") then return end
+
+    local myHrp = char.HumanoidRootPart
+    local targetHrp = target.Character.HumanoidRootPart
+
+    if not OriginalPosition then OriginalPosition = myHrp.CFrame end
+
+    local ammo = FindBlobman()
+    if not ammo then
+        SpawnBlobman()
+        task.wait(0.2)
+        ammo = FindBlobman()
+        if not ammo then return end
+    end
+
+    if ammo:FindFirstChild("HumanoidRootPart") then
+        ammo.HumanoidRootPart.CFrame = myHrp.CFrame * CFrame.new(0, 0, -2)
+        ammo.HumanoidRootPart.Velocity = Vector3.new(0,0,0)
+    end
+
+    myHrp.CFrame = targetHrp.CFrame * CFrame.new(0, 0, 2)
+    task.wait(0.01)
+
+    TriggerGrab(targetHrp)
+    task.wait(0.01)
+
+    myHrp.Velocity = myHrp.CFrame.LookVector * 800 + Vector3.new(0, 200, 0)
+    task.wait(0.05)
+
+    myHrp.CFrame = OriginalPosition
+    myHrp.Velocity = Vector3.new(0,0,0)
+    OriginalPosition = nil
 end
 
--- ■■■ メインループ ■■■
+-- ■■■ Grab Effects Loop ■■■
 task.spawn(function()
-    while task.wait(0.1) do
-        local grabPart = GetGrabPart()
-        
-        if grabPart then
-            local weld = grabPart:FindFirstChild("WeldConstraint")
-            if weld and weld.Part1 and weld.Part1.Parent then
-                local parent = weld.Part1.Parent
-                local head = parent:FindFirstChild("Head")
-                
-                if head then
-                    -- Poison Grab
-                    if IsPoison and #PoisonParts > 0 then
-                        for _, p in pairs(PoisonParts) do
-                            p.Size = Vector3.new(3, 3, 3)
-                            p.Position = head.Position + Vector3.new(0, 1.5, 0)
-                        end
+    while task.wait() do
+        local grabParts = Workspace:FindFirstChild("GrabParts")
+        if grabParts and grabParts:FindFirstChild("GrabPart") then
+            local weld = grabParts.GrabPart:FindFirstChild("WeldConstraint")
+            if weld and weld.Part1 and weld.Part1.Parent:FindFirstChild("Head") then
+                local head = weld.Part1.Parent.Head
+
+                if IsPoisonGrab then
+                    for _, p in pairs(PoisonParts) do
+                        p.Size = Vector3.new(4,4,4)
+                        p.Position = head.Position
+                        p.Transparency = 0.8
                     end
-                    
-                    -- Radioactive Grab
-                    if IsRadioactive and #PaintParts > 0 then
-                        for _, p in pairs(PaintParts) do
-                            p.Size = Vector3.new(3, 3, 3)
-                            p.Position = head.Position + Vector3.new(0, 1.5, 0)
-                        end
+                end
+
+                if IsRadioactiveGrab then
+                    for _, p in pairs(PaintParts) do
+                        p.Size = Vector3.new(4,4,4)
+                        p.Position = head.Position
+                        p.Transparency = 0.8
                     end
-                    
-                    -- Fire Grab
-                    if IsFireGrab then
-                        -- キャンプファイヤーを探す
-                        local campfire = nil
-                        if LocalPlayer.Character then
-                            campfire = LocalPlayer.Character:FindFirstChild("Campfire")
-                        end
-                        if not campfire then
-                            local toyFolder = Workspace:FindFirstChild(LocalPlayer.Name .. "SpawnedInToys")
-                            if toyFolder then
-                                campfire = toyFolder:FindFirstChild("Campfire")
-                            end
-                        end
-                        
+                end
+
+                if IsFireGrab then
+                    local toys = Workspace:FindFirstChild(LocalPlayer.Name.."SpawnedInToys")
+                    if toys then
+                        local campfire = toys:FindFirstChild("Campfire")
                         if campfire then
                             local fire = campfire:FindFirstChild("FirePlayerPart")
                             if fire then
-                                fire.Size = Vector3.new(8, 8, 8)
-                                fire.Position = head.Position + Vector3.new(0, 1.5, 0)
+                                fire.Size = Vector3.new(8,8,8)
+                                fire.Position = head.Position
+                                task.wait(0.3)
+                                fire.Position = Vector3.new(0,-100,0)
                             end
                         end
                     end
-                    
-                    -- Noclip Grab
-                    if IsNoclipGrab then
-                        for _, p in pairs(parent:GetDescendants()) do
-                            if p:IsA("BasePart") then
-                                p.CanCollide = false
-                            end
-                        end
+                end
+
+                if IsNoclipGrab then
+                    for _, p in pairs(weld.Part1.Parent:GetDescendants()) do
+                        if p:IsA("BasePart") then p.CanCollide = false end
                     end
                 end
             end
         else
-            -- グラブしていない時はリセット
-            if not IsPoison then
-                for _, p in pairs(PoisonParts) do
-                    p.Position = Vector3.new(0, -200, 0)
-                end
-            end
-            
-            if not IsRadioactive then
-                for _, p in pairs(PaintParts) do
-                    p.Position = Vector3.new(0, -200, 0)
-                end
-            end
+            for _, p in pairs(PoisonParts) do p.Position = Vector3.new(0,-200,0) end
+            for _, p in pairs(PaintParts) do p.Position = Vector3.new(0,-200,0) end
         end
     end
 end)
 
--- ■■■ Kick Grabループ ■■■
+-- ■■■ Kick Grab (Big FirePlayerPart) ■■■
 task.spawn(function()
-    while task.wait(0.5) do
+    while task.wait(1) do
         if IsKickGrab then
             for _, plr in pairs(Players:GetPlayers()) do
                 if plr ~= LocalPlayer and plr.Character and plr.Character:FindFirstChild("HumanoidRootPart") then
-                    local hrp = plr.Character.HumanoidRootPart
-                    local fire = hrp:FindFirstChild("FirePlayerPart")
-                    
-                    if not fire then
-                        fire = CreateFirePlayerPart()
-                        fire.Parent = hrp
-                        Debris:AddItem(fire, 0.6) -- 少し長めに持たせる
+                    local fire = plr.Character.HumanoidRootPart:FindFirstChild("FirePlayerPart")
+                    if fire then
+                        fire.Size = Vector3.new(6,6,6)
+                        fire.CanCollide = true
                     end
-                    
-                    fire.Size = Vector3.new(5, 5.5, 5)
-                    fire.Position = hrp.Position
                 end
             end
         end
     end
 end)
 
--- ■■■ Fire Allループ ■■■
+-- ■■■ Fire All Spam ■■■
 task.spawn(function()
-    local lastSpawn = 0
-    while task.wait(0.5) do
-        if IsFireAll and tick() - lastSpawn > 0.5 then
+    while task.wait(0.4) do
+        if IsFireAll then
             pcall(function()
-                -- 既存のキャンプファイヤーをクリーン
-                local toyFolder = Workspace:FindFirstChild(LocalPlayer.Name .. "SpawnedInToys")
-                if toyFolder then
-                    for _, toy in pairs(toyFolder:GetChildren()) do
-                        if toy.Name == "Campfire" then
-                            toy:Destroy()
-                        end
-                    end
-                end
-                
-                -- 新しいキャンプファイヤーをスポーン
-                ReplicatedStorage.MenuToys.SpawnToyRemoteFunction:InvokeServer(
-                    "Campfire", 
-                    Vector3.new(math.random(-10, 10), 5, math.random(-10, 10)),
-                    Vector3.new(0, 90, 0)
-                )
-                
-                lastSpawn = tick()
+                ReplicatedStorage.MenuToys.SpawnToyRemoteFunction:InvokeServer("Campfire", Vector3.new(0,0,0), Vector3.new(0,90,0))
             end)
         end
     end
 end)
 
--- ■■■ Anchor Grabシステム ■■■
-local function CleanupHighlights()
-    for _, hl in pairs(Highlighted) do
-        if hl then
-            hl:Destroy()
-        end
-    end
-    Highlighted = {}
-end
-
-local function CleanupBodyParts()
-    for _, obj in pairs(ActiveBodyParts) do
-        if obj then
-            obj:Destroy()
-        end
-    end
-    ActiveBodyParts = {}
-end
-
+-- ■■■ Anchor Grab + Highlight ■■■
 task.spawn(function()
-    while task.wait(0.5) do
+    while task.wait() do
         if IsAnchorGrab then
-            local grabPart = GetGrabPart()
-            if grabPart then
-                local weld = grabPart:FindFirstChild("WeldConstraint")
+            local grabParts = Workspace:FindFirstChild("GrabParts")
+            if grabParts and grabParts:FindFirstChild("GrabPart") then
+                local weld = grabParts.GrabPart:FindFirstChild("WeldConstraint")
                 if weld and weld.Part1 then
                     local obj = weld.Part1
-                    local model = obj:FindFirstAncestorWhichIsA("Model") or obj
-                    
-                    if not table.find(GrabbedObjects, model) then
-                        table.insert(GrabbedObjects, model)
-                        
-                        -- ハイライトを追加
+                    if not table.find(GrabbedObjects, obj) then
+                        table.insert(GrabbedObjects, obj)
+                        local model = obj:FindFirstAncestorWhichIsA("Model") or obj
                         local hl = Instance.new("Highlight")
                         hl.FillTransparency = 1
-                        hl.OutlineTransparency = 0.3
-                        hl.OutlineColor = Color3.fromRGB(0, 150, 255)
-                        hl.Adornee = model
-                        hl.Parent = Workspace
+                        hl.OutlineTransparency = 0.4
+                        hl.OutlineColor = Color3.new(0,0,1)
+                        hl.Parent = model
                         table.insert(Highlighted, hl)
-                        
-                        -- 物理制御を追加（Partのみ）
-                        if obj:IsA("BasePart") then
-                            local bp = Instance.new("BodyPosition")
-                            local bg = Instance.new("BodyGyro")
-                            
-                            bp.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
-                            bp.Position = obj.Position
-                            bp.P = 10000
-                            bp.D = 500
-                            
-                            bg.MaxTorque = Vector3.new(math.huge, math.huge, math.huge)
-                            bg.CFrame = obj.CFrame
-                            
-                            bp.Parent = obj
-                            bg.Parent = obj
-                            
-                            table.insert(ActiveBodyParts, bp)
-                            table.insert(ActiveBodyParts, bg)
-                        end
+
+                        local bp = Instance.new("BodyPosition", obj)
+                        local bg = Instance.new("BodyGyro", obj)
+                        bp.MaxForce = Vector3.new(1e6,1e6,1e6)
+                        bg.MaxTorque = Vector3.new(1e6,1e6,1e6)
                     end
                 end
-            else
-                -- グラブしていない時はクリーンアップ
-                if #Highlighted > 0 then
-                    CleanupHighlights()
-                    CleanupBodyParts()
-                    GrabbedObjects = {}
-                end
-            end
-        else
-            -- Anchor Grabがオフの時もクリーンアップ
-            if #Highlighted > 0 then
-                CleanupHighlights()
-                CleanupBodyParts()
-                GrabbedObjects = {}
             end
         end
     end
 end)
 
--- ■■■ Auto Recoverシステム ■■■
+-- ■■■ Auto Recover ■■■
 task.spawn(function()
-    while task.wait(0.1) do
+    while task.wait(0.05) do
         if IsAutoRecover and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
             local hrp = LocalPlayer.Character.HumanoidRootPart
-            
-            -- Workspace内のパーツをスキャン
-            for _, obj in pairs(Workspace:GetDescendants()) do
-                if obj:IsA("BasePart") then
-                    local distance = (obj.Position - hrp.Position).Magnitude
-                    
-                    if distance <= 30 then
-                        -- 所有権を確認
-                        local owner = obj:FindFirstChild("PartOwner")
-                        if owner and owner.Value == LocalPlayer.Name then
-                            TriggerGrab(obj)
-                            task.wait(0.05) -- スパム防止
-                        end
+            for _, obj in pairs(GrabbedObjects) do
+                if obj and obj.Parent and (obj.Position - hrp.Position).Magnitude < 40 then
+                    local owner = obj:FindFirstChild("PartOwner")
+                    if owner and owner.Value == LocalPlayer.Name then
+                        TriggerGrab(obj)
                     end
                 end
             end
@@ -355,251 +271,76 @@ task.spawn(function()
     end
 end)
 
--- ■■■ UI作成 ■■■
-local function CreateUI()
-    -- ScreenGuiの作成
-    local ScreenGui = Instance.new("ScreenGui")
-    ScreenGui.Name = "SyuHubUI"
-    ScreenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
-    ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-    
-    -- メインフレーム
-    local MainFrame = Instance.new("Frame")
-    MainFrame.Name = "MainFrame"
-    MainFrame.Size = UDim2.new(0, 300, 0, 400)
-    MainFrame.Position = UDim2.new(0, 10, 0, 10)
-    MainFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 40)
-    MainFrame.BackgroundTransparency = 0.2
-    MainFrame.Active = true
-    MainFrame.Draggable = true
-    MainFrame.Parent = ScreenGui
-    
-    local UICorner = Instance.new("UICorner")
-    UICorner.CornerRadius = UDim.new(0, 8)
-    UICorner.Parent = MainFrame
-    
-    local UIStroke = Instance.new("UIStroke")
-    UIStroke.Color = Color3.fromRGB(100, 100, 200)
-    UIStroke.Thickness = 2
-    UIStroke.Parent = MainFrame
-    
-    -- タイトル
-    local Title = Instance.new("TextLabel")
-    Title.Name = "Title"
-    Title.Size = UDim2.new(1, 0, 0, 40)
-    Title.Position = UDim2.new(0, 0, 0, 0)
-    Title.BackgroundColor3 = Color3.fromRGB(40, 40, 60)
-    Title.Text = "Syu_hub v8.3 - Phoenix Features"
-    Title.TextColor3 = Color3.fromRGB(255, 255, 255)
-    Title.Font = Enum.Font.GothamBold
-    Title.TextSize = 16
-    Title.Parent = MainFrame
-    
-    local TitleCorner = Instance.new("UICorner")
-    TitleCorner.CornerRadius = UDim.new(0, 8)
-    TitleCorner.Parent = Title
-    
-    -- 閉じるボタン
-    local CloseButton = Instance.new("TextButton")
-    CloseButton.Name = "CloseButton"
-    CloseButton.Size = UDim2.new(0, 30, 0, 30)
-    CloseButton.Position = UDim2.new(1, -35, 0, 5)
-    CloseButton.BackgroundColor3 = Color3.fromRGB(200, 60, 60)
-    CloseButton.Text = "X"
-    CloseButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-    CloseButton.Font = Enum.Font.GothamBold
-    CloseButton.TextSize = 14
-    CloseButton.Parent = Title
-    
-    local CloseCorner = Instance.new("UICorner")
-    CloseCorner.CornerRadius = UDim.new(0, 4)
-    CloseCorner.Parent = CloseButton
-    
-    CloseButton.MouseButton1Click:Connect(function()
-        ScreenGui:Destroy()
-    end)
-    
-    -- スクロールフレーム
-    local ScrollFrame = Instance.new("ScrollingFrame")
-    ScrollFrame.Name = "ScrollFrame"
-    ScrollFrame.Size = UDim2.new(1, -10, 1, -50)
-    ScrollFrame.Position = UDim2.new(0, 5, 0, 45)
-    ScrollFrame.BackgroundTransparency = 1
-    ScrollFrame.ScrollBarThickness = 6
-    ScrollFrame.AutomaticCanvasSize = Enum.AutomaticSize.Y
-    ScrollFrame.Parent = MainFrame
-    
-    -- ボタンリスト
-    local ButtonList = Instance.new("UIListLayout")
-    ButtonList.Padding = UDim.new(0, 5)
-    ButtonList.SortOrder = Enum.SortOrder.LayoutOrder
-    ButtonList.Parent = ScrollFrame
-    
-    -- ボタン作成関数
-    local function CreateToggleButton(text, initialState, color, toggleFunc)
-        local button = Instance.new("TextButton")
-        button.Size = UDim2.new(1, 0, 0, 40)
-        button.BackgroundColor3 = initialState and Color3.fromRGB(60, 150, 60) or color
-        button.Text = text .. " (" .. (initialState and "ON" or "OFF") .. ")"
-        button.TextColor3 = Color3.fromRGB(255, 255, 255)
-        button.Font = Enum.Font.Gotham
-        button.TextSize = 14
-        button.AutoButtonColor = false
-        button.LayoutOrder = #ScrollFrame:GetChildren()
-        button.Parent = ScrollFrame
-        
-        local corner = Instance.new("UICorner")
-        corner.CornerRadius = UDim.new(0, 6)
-        corner.Parent = button
-        
-        local stroke = Instance.new("UIStroke")
-        stroke.Color = Color3.fromRGB(100, 100, 100)
-        stroke.Thickness = 1
-        stroke.Parent = button
-        
-        button.MouseButton1Click:Connect(function()
-            local newState = toggleFunc()
-            button.BackgroundColor3 = newState and Color3.fromRGB(60, 150, 60) or color
-            button.Text = text .. " (" .. (newState and "ON" or "OFF") .. ")"
-        end)
-        
-        return button
-    end
-    
-    -- 各機能のトグルボタンを作成
-    CreateToggleButton("Poison Grab", IsPoison, Color3.fromRGB(40, 60, 40), function()
-        IsPoison = not IsPoison
-        if not IsPoison then
-            for _, p in pairs(PoisonParts) do
-                p.Position = Vector3.new(0, -200, 0)
-            end
-        end
-        Notify("Poison Grab: " .. (IsPoison and "ON" or "OFF"))
-        return IsPoison
-    end)
-    
-    CreateToggleButton("Radioactive Grab", IsRadioactive, Color3.fromRGB(60, 60, 40), function()
-        IsRadioactive = not IsRadioactive
-        if not IsRadioactive then
-            for _, p in pairs(PaintParts) do
-                p.Position = Vector3.new(0, -200, 0)
-            end
-        end
-        Notify("Radioactive Grab: " .. (IsRadioactive and "ON" or "OFF"))
-        return IsRadioactive
-    end)
-    
-    CreateToggleButton("Fire Grab", IsFireGrab, Color3.fromRGB(60, 40, 40), function()
-        IsFireGrab = not IsFireGrab
-        Notify("Fire Grab: " .. (IsFireGrab and "ON" or "OFF"))
-        return IsFireGrab
-    end)
-    
-    CreateToggleButton("Noclip Grab", IsNoclipGrab, Color3.fromRGB(40, 40, 60), function()
-        IsNoclipGrab = not IsNoclipGrab
-        Notify("Noclip Grab: " .. (IsNoclipGrab and "ON" or "OFF"))
-        return IsNoclipGrab
-    end)
-    
-    CreateToggleButton("Kick Grab", IsKickGrab, Color3.fromRGB(60, 40, 60), function()
-        IsKickGrab = not IsKickGrab
-        Notify("Kick Grab: " .. (IsKickGrab and "ON" or "OFF"))
-        return IsKickGrab
-    end)
-    
-    CreateToggleButton("Fire All", IsFireAll, Color3.fromRGB(60, 40, 20), function()
-        IsFireAll = not IsFireAll
-        Notify("Fire All: " .. (IsFireAll and "ON" or "OFF"))
-        return IsFireAll
-    end)
-    
-    CreateToggleButton("Anchor Grab", IsAnchorGrab, Color3.fromRGB(40, 40, 80), function()
-        IsAnchorGrab = not IsAnchorGrab
-        if not IsAnchorGrab then
-            CleanupHighlights()
-            CleanupBodyParts()
-            GrabbedObjects = {}
-        end
-        Notify("Anchor Grab: " .. (IsAnchorGrab and "ON" or "OFF"))
-        return IsAnchorGrab
-    end)
-    
-    CreateToggleButton("Auto Recover", IsAutoRecover, Color3.fromRGB(40, 80, 40), function()
-        IsAutoRecover = not IsAutoRecover
-        Notify("Auto Recover: " .. (IsAutoRecover and "ON" or "OFF"))
-        return IsAutoRecover
-    end)
-    
-    -- クリアボタン
-    local ClearButton = Instance.new("TextButton")
-    ClearButton.Size = UDim2.new(1, 0, 0, 40)
-    ClearButton.BackgroundColor3 = Color3.fromRGB(80, 40, 40)
-    ClearButton.Text = "CLEAR ALL EFFECTS"
-    ClearButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-    ClearButton.Font = Enum.Font.GothamBold
-    ClearButton.TextSize = 14
-    ClearButton.LayoutOrder = #ScrollFrame:GetChildren()
-    ClearButton.Parent = ScrollFrame
-    
-    local ClearCorner = Instance.new("UICorner")
-    ClearCorner.CornerRadius = UDim.new(0, 6)
-    ClearCorner.Parent = ClearButton
-    
-    ClearButton.MouseButton1Click:Connect(function()
-        -- すべての状態をリセット
-        IsPoison = false
-        IsRadioactive = false
-        IsFireGrab = false
-        IsNoclipGrab = false
-        IsKickGrab = false
-        IsFireAll = false
-        IsAnchorGrab = false
-        IsAutoRecover = false
-        
-        -- パーツをリセット
-        for _, p in pairs(PoisonParts) do
-            p.Position = Vector3.new(0, -200, 0)
-        end
-        for _, p in pairs(PaintParts) do
-            p.Position = Vector3.new(0, -200, 0)
-        end
-        
-        -- クリーンアップ
-        CleanupHighlights()
-        CleanupBodyParts()
-        GrabbedObjects = {}
-        
-        -- UI更新
-        local buttons = ScrollFrame:GetChildren()
-        for _, btn in pairs(buttons) do
-            if btn:IsA("TextButton") and btn ~= ClearButton then
-                btn.BackgroundColor3 = Color3.fromRGB(40, 40, 60)
-                btn.Text = btn.Text:gsub(" %(ON%)", " (OFF)"):gsub(" %(OFF%)", " (OFF)")
-            end
-        end
-        
-        Notify("All effects cleared!")
-    end)
-    
-    return ScreenGui
-end
+-- ■■■ UI ■■■
+local MainTab = Window:CreateTab("Main", 4483345998)
 
--- ■■■ スクリプト開始 ■■■
-local success, err = pcall(function()
-    -- UIを作成
-    local UI = CreateUI()
-    
-    -- 初期通知
-    Notify("Syu_hub v8.3 loaded! Phoenix features activated.")
-    
-    -- プレイヤーが退出した時のクリーンアップ
-    LocalPlayer.CharacterRemoving:Connect(function()
-        CleanupHighlights()
-        CleanupBodyParts()
-        GrabbedObjects = {}
-    end)
-end)
+local TargetSection = MainTab:CreateSection("Target Selector")
+local PlayerDropdown = MainTab:CreateDropdown({
+    Name = "Select Target Player",
+    Options = GetPlayerNames(),
+    CurrentOption = "",
+    Callback = function(Option)
+        TargetPlayer = Option[1]
+        SendNotif("Target", "選択: " .. TargetPlayer)
+    end,
+})
+MainTab:CreateButton({
+    Name = "Refresh Player List",
+    Callback = function()
+        PlayerDropdown:Refresh(GetPlayerNames())
+    end,
+})
 
-if not success then
-    warn("Syu_hub initialization error:", err)
-end
+local KickSection = MainTab:CreateSection("Blobman Kick Actions")
+MainTab:CreateButton({
+    Name = "Single Kick Target",
+    Callback = function()
+        if TargetPlayer then BlobmanKick(TargetPlayer) end
+    end,
+})
+MainTab:CreateToggle({
+    Name = "Loop Kick Target",
+    CurrentValue = false,
+    Callback = function(v)
+        IsLoopKicking = v
+        if v and TargetPlayer then
+            task.spawn(function()
+                while IsLoopKicking do
+                    BlobmanKick(TargetPlayer)
+                    task.wait(0.15)
+                end
+            end)
+        end
+    end,
+})
+MainTab:CreateButton({
+    Name = "Loop Kick ALL (Toggle)",
+    Callback = function()
+        IsLoopKicking = not IsLoopKicking
+        if IsLoopKicking then
+            task.spawn(function()
+                while IsLoopKicking do
+                    for _, p in pairs(Players:GetPlayers()) do
+                        if p ~= LocalPlayer then
+                            BlobmanKick(p.Name)
+                            task.wait(0.2)
+                        end
+                    end
+                end
+            end)
+        end
+    end,
+})
+MainTab:CreateButton({ Name = "Force Spawn Blobman", Callback = SpawnBlobman })
+
+local GrabEffectsSection = MainTab:CreateSection("Grab Effects (Phoenix Features)")
+MainTab:CreateToggle({ Name = "Poison Grab", CurrentValue = false, Callback = function(v) IsPoisonGrab = v end })
+MainTab:CreateToggle({ Name = "Radioactive Grab", CurrentValue = false, Callback = function(v) IsRadioactiveGrab = v end })
+MainTab:CreateToggle({ Name = "Fire Grab", CurrentValue = false, Callback = function(v) IsFireGrab = v end })
+MainTab:CreateToggle({ Name = "Noclip Grab", CurrentValue = false, Callback = function(v) IsNoclipGrab = v end })
+MainTab:CreateToggle({ Name = "Kick Grab (Big FirePart)", CurrentValue = false, Callback = function(v) IsKickGrab = v end })
+MainTab:CreateToggle({ Name = "Fire All Spam", CurrentValue = false, Callback = function(v) IsFireAll = v end })
+MainTab:CreateToggle({ Name = "Anchor Grab + Highlight", CurrentValue = false, Callback = function(v) IsAnchorGrab = v end })
+MainTab:CreateToggle({ Name = "Auto Recover Dropped Parts", CurrentValue = false, Callback = function(v) IsAutoRecover = v end })
+
+SendNotif("Syu_hub Loaded", "Ultimate Edition with Phoenix Features Ready!")
